@@ -9,12 +9,28 @@ if (!path.isAbsolute(serviceAccountPath)) {
 }
 
 if (!admin.apps.length) {
-    if (fs.existsSync(serviceAccountPath)) {
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+        // Option 1: Load from environment variable (Best for Railway/Production)
+        try {
+            const serviceAccount = JSON.parse(
+                process.env.FIREBASE_SERVICE_ACCOUNT_JSON.startsWith('{')
+                ? process.env.FIREBASE_SERVICE_ACCOUNT_JSON
+                : Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_JSON, 'base64').toString()
+            );
+            admin.initializeApp({
+                credential: admin.credential.cert(serviceAccount),
+            });
+            console.log('🔥 Firebase Admin SDK initialized (from ENV)');
+        } catch (err) {
+            console.error('❌ Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON:', err.message);
+        }
+    } else if (fs.existsSync(serviceAccountPath)) {
+        // Option 2: Load from file (Local development)
         const serviceAccount = require(serviceAccountPath);
         admin.initializeApp({
             credential: admin.credential.cert(serviceAccount),
         });
-        console.log('🔥 Firebase Admin SDK initialized');
+        console.log('🔥 Firebase Admin SDK initialized (from File)');
     } else {
         // Fallback: use project ID only (limited features)
         admin.initializeApp({
