@@ -2,26 +2,28 @@ const { Pool } = require('pg');
 const dns = require('dns');
 
 // ─── DNS PATCH FOR WINDOWS ENOTFOUND (Neon hostnames) ───────────────────────
-dns.setServers(['8.8.8.8', '1.1.1.1']);
-const oldLookup = dns.lookup;
-dns.lookup = function (hostname, options, callback) {
-    if (typeof options === 'function') { callback = options; options = {}; }
-    if (hostname && hostname.includes('neon.tech')) {
-        dns.resolve4(hostname, (err, addresses) => {
-            if (err) return oldLookup(hostname, options, callback);
-            if (addresses && addresses.length > 0) {
-                if (options && options.all) {
-                    return callback(null, addresses.map(ip => ({ address: ip, family: 4 })));
-                } else {
-                    return callback(null, addresses[0], 4);
+if (process.platform === 'win32') {
+    dns.setServers(['8.8.8.8', '1.1.1.1']);
+    const oldLookup = dns.lookup;
+    dns.lookup = function (hostname, options, callback) {
+        if (typeof options === 'function') { callback = options; options = {}; }
+        if (hostname && hostname.includes('neon.tech')) {
+            dns.resolve4(hostname, (err, addresses) => {
+                if (err) return oldLookup(hostname, options, callback);
+                if (addresses && addresses.length > 0) {
+                    if (options && options.all) {
+                        return callback(null, addresses.map(ip => ({ address: ip, family: 4 })));
+                    } else {
+                        return callback(null, addresses[0], 4);
+                    }
                 }
-            }
+                oldLookup(hostname, options, callback);
+            });
+        } else {
             oldLookup(hostname, options, callback);
-        });
-    } else {
-        oldLookup(hostname, options, callback);
-    }
-};
+        }
+    };
+}
 // ────────────────────────────────────────────────────────────────────────────
 
 const poolConfig = process.env.DATABASE_URL
