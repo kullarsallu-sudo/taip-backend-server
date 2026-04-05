@@ -30,7 +30,7 @@ const poolConfig = process.env.DATABASE_URL
     ? {
         connectionString: process.env.DATABASE_URL,
         ssl: { rejectUnauthorized: false },
-        connectionTimeoutMillis: 10000,  // ✅ FIXED: was 0 (infinite), now 10s
+        connectionTimeoutMillis: 30000,  // ✅ Increased to 30s for Neon cold starts
         idleTimeoutMillis: 10000,        // ✅ FIXED: drop idle connections faster
         max: 5,                          // ✅ smaller pool for serverless
         allowExitOnIdle: true,
