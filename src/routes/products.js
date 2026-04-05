@@ -29,6 +29,7 @@ router.get('/', async (req, res, next) => {
                 p.material,
                 p.weight,
                 p.is_stitched as "isStitched",
+                p.state_reference as "stateReference",
                 c.name as "categoryName"
             FROM products p
             LEFT JOIN categories c ON c.id = p.category_id
@@ -74,6 +75,7 @@ router.get('/:id', async (req, res, next) => {
                 p.material,
                 p.weight,
                 p.is_stitched as "isStitched",
+                p.state_reference as "stateReference",
                 c.name as "categoryName"
             FROM products p 
             LEFT JOIN categories c ON c.id = p.category_id 
@@ -121,9 +123,9 @@ router.post('/', async (req, res, next) => {
         id, name, description, price, original_price, discount_pct, 
         category_id, gender, brand, image_url, images, sizes, colors, stock,
         fabric_details, bottom_details, stitching_details, fit_details,
-        highlights, model_no, material, weight, is_stitched, tailor_id
+        highlights, model_no, material, weight, is_stitched, tailor_id, state_reference
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
       RETURNING 
         id, name, description, price, 
         original_price as "originalPrice", 
@@ -143,6 +145,7 @@ router.post('/', async (req, res, next) => {
         material,
         weight,
         is_stitched as "isStitched",
+        state_reference as "stateReference",
         tailor_id as "tailorId",
         is_active as "isActive";
     `, [
@@ -151,7 +154,7 @@ router.post('/', async (req, res, next) => {
             images || [], sizes || [], colors || [], Math.floor(stock) || 0,
             fabricDetails || '', bottomDetails || '', stitchingDetails || '', fitDetails || '',
             JSON.stringify(highlights || []), modelNo || '', material || '', weight || '', isStitched || false,
-            tailorId || null
+            tailorId || null, req.body.stateReference || null
         ]);
 
         console.log('✅ DATABASE SUCCESS: Product saved with ID:', result.rows[0].id);
@@ -197,8 +200,9 @@ router.put('/:id', async (req, res, next) => {
         material           = COALESCE($21, material),
         weight             = COALESCE($22, weight),
         is_stitched        = COALESCE($23, is_stitched),
+        state_reference    = COALESCE($24, state_reference),
         updated_at         = NOW()
-      WHERE id = $24 
+      WHERE id = $25 
       RETURNING 
         id, name, description, price, 
         original_price as "originalPrice", 
@@ -218,13 +222,14 @@ router.put('/:id', async (req, res, next) => {
         material,
         weight,
         is_stitched as "isStitched",
+        state_reference as "stateReference",
         is_active as "isActive";
     `, [
             name, description, price, originalPrice, discountPct, categoryId, gender, brand,
             imageUrl, images, sizes, colors, stock, isActive,
             fabricDetails, bottomDetails, stitchingDetails, fitDetails,
             highlights ? JSON.stringify(highlights) : null,
-            modelNo, material, weight, isStitched, req.params.id
+            modelNo, material, weight, isStitched, req.body.stateReference, req.params.id
         ]);
         res.json({ success: true, product: result.rows[0] });
     } catch (err) { next(err); }

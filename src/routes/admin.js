@@ -86,21 +86,54 @@ router.patch('/users/:id/admin', verifyFirebaseToken, requireAdmin, async (req, 
 
 // ── Home Config ───────────────────────────────────────────────────────────────
 
+// GET /api/admin/home-config (List all)
+router.get('/home-config', async (req, res, next) => {
+    try {
+        const result = await pool.query(`
+            SELECT id, gender, state, config_name as "configName", target_states as "targetStates", updated_at as "updatedAt"
+            FROM home_config 
+            ORDER BY updated_at DESC
+        `);
+        res.json({ success: true, configs: result.rows });
+    } catch (err) { next(err); }
+});
+
 // GET /api/admin/home-config/:gender
 router.get('/home-config/:gender', async (req, res, next) => {
     try {
-        const result = await pool.query(
-            'SELECT * FROM home_config WHERE gender = $1',
-            [req.params.gender]
+        const { state } = req.query;
+        let query = 'SELECT * FROM home_config WHERE gender = $1';
+        const params = [req.params.gender];
+        // 1. Try Exact Match or Target States containing the requested state
+        let result = await pool.query(
+            `SELECT * FROM home_config 
+             WHERE gender = $1 
+             AND (state = $2 OR target_states @> JSONB_BUILD_ARRAY($2::text))
+             ORDER BY (state = $2) DESC, created_at DESC 
+             LIMIT 1`,
+            [req.params.gender, req.query.state || null]
         );
-        const config = result.rows[0];
+
+        let config = result.rows[0];
+
+        // 2. Fallback to Global if no regional match
+        if (!config) {
+            const fallback = await pool.query(
+                'SELECT * FROM home_config WHERE gender = $1 AND (state IS NULL OR state = \'\') LIMIT 1',
+                [req.params.gender]
+            );
+            config = fallback.rows[0];
+        }
 
         // Merge full_config into the top-level object for frontend compatibility
         const mergedConfig = {
             ...config?.full_config,
             sections: config?.sections_order,
             videoBgCats: config?.video_bg_cats,
-            gender: config?.gender
+            gender: config?.gender,
+            state: config?.state,
+            configName: config?.config_name,
+            targetStates: config?.target_states || []
         };
 
         res.json({ success: true, config: mergedConfig });
@@ -110,22 +143,44 @@ router.get('/home-config/:gender', async (req, res, next) => {
 // PUT /api/admin/home-config/:gender
 router.put('/home-config/:gender', async (req, res, next) => {
     try {
-        const { sections, videoBgCats, ...rest } = req.body;
-        const result = await pool.query(`
-      UPDATE home_config SET
-        sections_order = COALESCE($1, sections_order),
-        video_bg_cats  = COALESCE($2, video_bg_cats),
-        full_config    = $3,
-        updated_at     = NOW()
-      WHERE gender = $4 RETURNING *;
-    `, [sections, videoBgCats, rest, req.params.gender]);
+        const { state, config: rest, configName, targetStates } = req.body;
+        const sections = rest?.sections;
+        const videoBgCats = rest?.videoBgCats;
+        const gender = req.params.gender;
+
+        // Check if a config already exists for this gender/state
+        const existing = await pool.query(
+            'SELECT id FROM home_config WHERE gender = $1 AND (state = $2 OR (state IS NULL AND $2 IS NULL))',
+            [gender, state || null]
+        );
+
+        let result;
+        if (existing.rows.length > 0) {
+            result = await pool.query(`
+                UPDATE home_config SET
+                    sections_order = COALESCE($1, sections_order),
+                    video_bg_cats  = COALESCE($2, video_bg_cats),
+                    full_config    = $3,
+                    config_name    = $4,
+                    target_states  = $5,
+                    updated_at     = NOW()
+                WHERE id = $6 RETURNING *;
+            `, [sections, videoBgCats, rest, configName || null, JSON.stringify(targetStates || []), existing.rows[0].id]);
+        } else {
+            result = await pool.query(`
+                INSERT INTO home_config (gender, state, sections_order, video_bg_cats, full_config, config_name, target_states)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                RETURNING *;
+            `, [gender, state || null, sections, videoBgCats, rest, configName || null, JSON.stringify(targetStates || [])]);
+        }
 
         const config = result.rows[0];
         const mergedConfig = {
             ...config.full_config,
             sections: config.sections_order,
             videoBgCats: config.video_bg_cats,
-            gender: config.gender
+            gender: config.gender,
+            state: config.state
         };
 
         res.json({ success: true, config: mergedConfig });
